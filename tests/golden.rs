@@ -1,7 +1,7 @@
 extern crate tauri_icns;
 
 use std::fs::File;
-use std::io::{self, BufReader};
+use std::io::{self, BufReader, Cursor};
 use tauri_icns::{IconFamily, IconType, Image, PixelFormat};
 
 #[test]
@@ -88,7 +88,7 @@ fn adjust_png_to_match_png_encoder_quirks(image: Image) -> Image {
         return image;
     }
     // Force decoding from PNG.
-    Image::decode_from_png(image.data()).unwrap()
+    Image::decode_from_png(Cursor::new(image.data())).unwrap()
 }
 
 fn encoder_test(png_name: &str, icon_type: IconType, icns_name: &str) {
