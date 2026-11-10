@@ -1,57 +1,46 @@
 use image::{Image, PixelFormat};
 use png;
-use std::io::{self, Read, Write};
+use std::io::{self, BufRead, Cursor, Read, Seek, Write};
 
 impl Image {
     /// Reads an image from a PNG file.
     pub fn read_png<R: Read>(mut input: R) -> io::Result<Image> {
         let mut v = Vec::new();
         input.read_to_end(&mut v)?;
-        let image = Image::decode_from_png(v.as_slice())?;
+
+        let mut decoder = png::Decoder::new(Cursor::new(&v));
+        let info = decoder.read_header_info()?;
+
         Ok(Image {
             format: PixelFormat::PNG,
-            width: image.width,
-            height: image.height,
+            width: info.width,
+            height: info.height,
             data: v.into_boxed_slice(),
         })
     }
 
     /// Internal function to decode a PNG.
-    pub fn decode_from_png<R: Read>(input: R) -> io::Result<Image> {
-        let decoder = png::Decoder::new(input);
+    pub fn decode_from_png<R: BufRead + Seek>(input: R) -> io::Result<Image> {
+        let mut decoder = png::Decoder::new(input);
+        decoder.set_transformations(png::Transformations::STRIP_16 | png::Transformations::EXPAND);
+        let info = decoder.read_header_info()?;
+        let (width, height) = (info.width, info.height);
         let mut reader = decoder.read_info()?;
-        let info = reader.info();
-        let pixel_format = match info.color_type {
+
+        let (color_type, bit_depth) = reader.output_color_type();
+        assert!(bit_depth == png::BitDepth::Eight);
+        let pixel_format = match color_type {
             png::ColorType::Rgba => PixelFormat::RGBA,
             png::ColorType::Rgb => PixelFormat::RGB,
             png::ColorType::GrayscaleAlpha => PixelFormat::GrayAlpha,
             png::ColorType::Grayscale => PixelFormat::Gray,
-            _ => {
-                // TODO: Support other color types.
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!(
-                        "unsupported PNG color \
-                                                   type: {:?}",
-                        info.color_type
-                    ),
-                ));
-            }
+            _ => unreachable!(), // EXPAND prevents paletted output
         };
-        if info.bit_depth != png::BitDepth::Eight {
-            // TODO: Support other bit depths.
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!(
-                    "unsupported PNG bit depth: \
-                                               {:?}",
-                    info.bit_depth
-                ),
-            ));
-        }
-        let mut image = Image::new(pixel_format, info.width, info.height);
-        assert_eq!(image.data().len(), reader.output_buffer_size());
+
+        let mut image = Image::new(pixel_format, width, height);
+        assert_eq!(Some(image.data().len()), reader.output_buffer_size());
         reader.next_frame(image.data_mut())?;
+        reader.finish()?;
         Ok(image)
     }
 

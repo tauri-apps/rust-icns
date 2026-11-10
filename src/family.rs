@@ -236,7 +236,7 @@ mod tests {
         BufReader::new(File::open("tests/png/256x256.png").unwrap())
             .read_to_end(&mut png_data)
             .unwrap();
-        let image = Image::read_png(png_data.as_slice()).unwrap();
+        let image = Image::read_png(Cursor::new(&png_data)).unwrap();
         icon_family.add_icon(&image).unwrap();
 
         // Save the updated icon family to a new ICNS 'file'.
